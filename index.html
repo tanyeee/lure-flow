@@ -105,6 +105,9 @@ details .group { margin-top: 10px; }
   html, body { height: auto; }
   .wrap { grid-template-columns: 1fr; grid-template-rows: auto; height: auto; }
   .stage { grid-template-rows: auto 420px auto; }
+  /* スマホ：XYZ移動ボタンは画面の外（下）に横並び */
+  #view { overflow: visible; margin-bottom: 50px; }
+  #padMove { top: calc(100% + 6px); bottom: auto; left: 0; grid-template-columns: repeat(3, 14px 38px 38px); column-gap: 4px; }
   aside { overflow: visible; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
@@ -222,7 +225,7 @@ details .group { margin-top: 10px; }
       <div class="bar">
         <button id="resetAll">設定を初期化</button>
         <button id="update" hidden>アプリを更新</button>
-        <span class="ver" id="ver">v20261015-0222</span>
+        <span class="ver" id="ver">v20261015-0352</span>
       </div>
       <p class="updnote" id="updMsg" hidden></p>
     </div>
@@ -457,15 +460,15 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
   const lineMat = new THREE.LineBasicMaterial({ color: 0x333333 });
 
   // 流れの粒子：1画面は点、2画面以上は軌跡（短い線）
-  const NP = 260, ppos = new Float32Array(NP * 3);
+  const NP = 140, ppos = new Float32Array(NP * 3);
   for (let i = 0; i < NP; i++) { ppos[i * 3] = Math.random() * 300 - 150; ppos[i * 3 + 1] = Math.random() * 120 - 60; ppos[i * 3 + 2] = Math.random() * 100 - 55; }
   const pgeo = new THREE.BufferGeometry(); pgeo.setAttribute("position", new THREE.BufferAttribute(ppos, 3));
-  const pmat = new THREE.PointsMaterial({ size: 1.6, transparent: true, opacity: 0.55 });
+  const pmat = new THREE.PointsMaterial({ size: 1.5, transparent: true, opacity: 0.35 });
   const points = new THREE.Points(pgeo, pmat); scene.add(points);
   const spos = new Float32Array(NP * 6), scol = new Float32Array(NP * 6);
   const sgeo = new THREE.BufferGeometry();
   sgeo.setAttribute("position", new THREE.BufferAttribute(spos, 3)); sgeo.setAttribute("color", new THREE.BufferAttribute(scol, 3));
-  const smat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7 });
+  const smat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.45 });
   const streaks = new THREE.LineSegments(sgeo, smat); scene.add(streaks);
 
   // ---------- ルアー（A と B の 2 つまで）
@@ -653,6 +656,7 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
     $("U").value = s0.U; $("speed").value = SPEEDS.indexOf(speed);
     $("leader").value = Math.round(s0.leader * 100); $("stiff").value = Math.round(s0.stiff * 100);
     $("Uo").textContent = s0.U.toFixed(2) + " m/s";
+    $("flowtag").textContent = "← 流れ  " + s0.U.toFixed(2) + " m/s";
     $("speedo").textContent = speed === 1 ? "実時間" : "1/" + Math.round(1 / speed) + " スロー";
     $("leadero").textContent = Math.round(s0.leader * 100) + " cm";
     $("stiffo").textContent = Math.round(s0.stiff * 100) + " %";
