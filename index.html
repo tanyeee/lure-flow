@@ -225,7 +225,7 @@ details .group { margin-top: 10px; }
       <div class="bar">
         <button id="resetAll">設定を初期化</button>
         <button id="update" hidden>アプリを更新</button>
-        <span class="ver" id="ver">v20261015-0352</span>
+        <span class="ver" id="ver">v20261015-0358</span>
       </div>
       <p class="updnote" id="updMsg" hidden></p>
     </div>
@@ -460,7 +460,7 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
   const lineMat = new THREE.LineBasicMaterial({ color: 0x333333 });
 
   // 流れの粒子：1画面は点、2画面以上は軌跡（短い線）
-  const NP = 140, ppos = new Float32Array(NP * 3);
+  const NP = 180, ppos = new Float32Array(NP * 3);
   for (let i = 0; i < NP; i++) { ppos[i * 3] = Math.random() * 300 - 150; ppos[i * 3 + 1] = Math.random() * 120 - 60; ppos[i * 3 + 2] = Math.random() * 100 - 55; }
   const pgeo = new THREE.BufferGeometry(); pgeo.setAttribute("position", new THREE.BufferAttribute(ppos, 3));
   const pmat = new THREE.PointsMaterial({ size: 1.5, transparent: true, opacity: 0.35 });
@@ -591,7 +591,7 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
       if (rc && ps.length > 1) {
         const m = models[ps[i][0]];
         l.textContent = ps[i][2] + (st.layout === "cmp" ? "（" + (NAMES[m.key] || m.key) + "）" : "");
-        l.style.left = (rc[0] + 8) + "px"; l.style.top = (rc[1] + (rc[1] === 0 && rc[0] === 0 ? 40 : 8)) + "px";
+        l.style.left = (rc[0] + 8) + "px"; l.style.top = (rc[1] + (rc[1] === 0 ? 40 : 8)) + "px";   // 上段はバッジ・流速表示の下にそろえる
       }
     });
     $("padRot").hidden = st.layout !== 1;
@@ -599,6 +599,8 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
     for (const k of [1, 2, 3, "cmp"]) $("lay-" + k).setAttribute("aria-pressed", k === st.layout);
     $("rowB").hidden = st.layout !== "cmp";
     points.visible = ps.length === 1; streaks.visible = ps.length > 1;
+    const np = r.width < 600 ? 60 : NP;   // スマホは粒子を減らす
+    pgeo.setDrawRange(0, np); sgeo.setDrawRange(0, np * 2);
   }
   for (const k of [1, 2, 3, "cmp"]) $("lay-" + k).addEventListener("click", () => {
     st.layout = k;
