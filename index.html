@@ -179,6 +179,9 @@ details .group { margin-top: 10px; }
         <div class="row"><label for="stiff">リーダーの張り（固定寄せ）</label><output id="stiffo"></output>
           <input id="stiff" type="range" min="0" max="100" step="1" value="20"></div>
       </div>
+      <div class="row"><label for="lineAng">ライン角度（上下を支えられる上限）</label><output id="lineAngo"></output>
+        <input id="lineAng" type="range" min="0" max="90" step="1" value="15"></div>
+      <p class="hint">ラインは「引く力×tan(角度)」までしかルアーを上下に支えません。遅く巻くと支えきれず、ルアーは沈みながら泳ぎます（画面はルアーと一緒に沈みます）。90° でアイの高さを完全に固定します。</p>
       <p class="hint" id="modeHint"></p>
     </div>
 
@@ -222,7 +225,7 @@ details .group { margin-top: 10px; }
       <div class="bar">
         <button id="resetAll">設定を初期化</button>
         <button id="update" hidden>アプリを更新</button>
-        <span class="ver" id="ver">v20261017-1636</span>
+        <span class="ver" id="ver">v20261017-1703</span>
       </div>
       <p class="updnote" id="updMsg" hidden></p>
     </div>
@@ -299,6 +302,9 @@ function createSim(lure, opt = {}) {
   const s = {
     lure, U: opt.U ?? 0.5, mode: opt.mode ?? "pin", leader: opt.leader ?? 0.2,
     stiff: opt.stiff ?? 0.3,   // リーダーの固定寄せ度（0: 自由なロープ, 1: アイ固定と同等）
+    zfree: opt.zfree ?? true,  // ライン角度の制限あり：ラインは「横向きの張力×tan(角度)」までしか上下を支えない（遅いと沈みながら泳ぐ）
+    lineAng: opt.lineAng ?? 15, // ラインが水平となす最大角度 [°]
+    sink: 0,                   // 沈下速度 [m/s]（下向き+）
     cal: Object.assign({}, DEFAULT_CAL, opt.cal || {}),
     t: 0, phase: 0, q: [1, 0, 0, 0], w: [0, 0, 0], v: [0, 0, 0], p: null, tension: [0, 0, 0],
   };
@@ -307,7 +313,7 @@ function createSim(lure, opt = {}) {
 }
 
 function reset(s) {
-  s.q = [1, 0, 0, 0]; s.w = [0, 0, 0]; s.v = [0, 0, 0]; s.t = 0; s.phase = Math.random() * 6.28;
+  s.q = [1, 0, 0, 0]; s.w = [0, 0, 0]; s.v = [0, 0, 0]; s.t = 0; s.sink = 0; s.phase = Math.random() * 6.28;
   s.p = vscale(s.lure.eye, -1);             // アイが原点
   s.anchor = s.mode === "pin" ? [0, 0, 0] : [s.leader, 0, 0];
   if (s.mode !== "pin") s.p = vsub(s.p, [0, 0, 0]);
@@ -369,7 +375,15 @@ function step(s, dt) {
     const a = Math.max(0, Math.min(1, s.stiff)), kk = a * a * k;
     const cLead = 0.5 * RHO * 1.2 * 0.00026 * s.leader * 0.5;   // リーダー（φ0.26mm）の抵抗を線形化
     const cc = cLead + a * cdamp;
-    Tw = vadd(Tw, [0, -kk * pe[1] - cc * ve[1], -kk * pe[2] - cc * ve[2]]);
+    Tw = vadd(Tw, [0, -kk * pe[1] - cc * ve[1], -kk * (pe[2] - s.anchor[2]) - cc * ve[2]]);
+  }
+  if (s.zfree) {  // 上下の支えは「横向きの張力×tan(ライン角度)」まで。超えた分はアンカーが上下にずれて（ルアーが沈んで／浮いて）逃げる
+    const lim = Math.abs(Tw[0]) * Math.tan(s.lineAng * Math.PI / 180);
+    if (Math.abs(Tw[2]) > lim) {
+      const r = lim / Math.abs(Tw[2]);
+      s.anchor[2] = pe[2] + (s.anchor[2] - pe[2]) * r;
+      Tw[2] *= r;
+    }
   }
   s.tension = Tw;
   addAt(L.eye, qrotInv(q, Tw));
@@ -386,6 +400,11 @@ function step(s, dt) {
   s.w = vadd(w, vscale(wd, dt));
   const dq = qmul(q, [0, s.w[0], s.w[1], s.w[2]]);
   s.q = qnorm([q[0] + 0.5 * dq[0] * dt, q[1] + 0.5 * dq[1] * dt, q[2] + 0.5 * dq[2] * dt, q[3] + 0.5 * dq[3] * dt]);
+  if (s.zfree) {  // 画面はルアーと一緒に沈む：アンカーの高さを 0 に戻し、沈む速さを記録する（水が下から上へ流れて見える）
+    const az = s.anchor[2];
+    s.p[2] -= az; s.anchor[2] = 0;
+    s.sink += (-s.v[2] - s.sink) * Math.min(1, dt / 0.5);
+  }
   s.t += dt;
 }
 
@@ -410,7 +429,7 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
   const DEF_CAL = Object.assign({}, DEFAULT_CAL, { lipScale: 3, Cosc: 0.12, rollDamp: 40, cp: 0.75 });
   const VIEWS = { side: [-90, 0], top: [-90, 89], front: [0, 0], free: [-45, 25] };
   const DEFAULTS = {
-    U: 1.0, speedIdx: 1, mode: "pin", leader: 0.15, stiff: 0.2, preset: "v1", cmpB: "solid", layout: 1,
+    U: 1.0, speedIdx: 1, mode: "pin", leader: 0.15, stiff: 0.2, lineAng: 15, preset: "v1", cmpB: "solid", layout: 1,
     cal: DEF_CAL, cam: { az: -90, el: 0, dist: 260, off: [0, 0, 0], view: "side" },
   };
   const NAMES = { file: "読み込んだデータ" };
@@ -435,7 +454,7 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
     saveTimer = setTimeout(() => {
       try {
         const s0 = models[0].sim;
-        st.U = s0.U; st.mode = s0.mode; st.leader = s0.leader; st.stiff = s0.stiff; st.cal = s0.cal;
+        st.U = s0.U; st.mode = s0.mode; st.leader = s0.leader; st.stiff = s0.stiff; st.lineAng = s0.lineAng; st.cal = s0.cal;
         localStorage.setItem(STORE, JSON.stringify(st));
       } catch (e) { /* 保存できない環境では何もしない */ }
     }, 300);
@@ -496,8 +515,9 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
   }
   function simOpts() {
     const s0 = models[0].sim;
-    return s0 ? { U: s0.U, mode: s0.mode, leader: s0.leader, stiff: s0.stiff, cal: s0.cal }
-      : { U: st.U, mode: st.mode, leader: st.leader, stiff: st.stiff, cal: Object.assign({}, st.cal) };
+    const z = a => ({ zfree: a < 90, lineAng: a });
+    return s0 ? Object.assign({ U: s0.U, mode: s0.mode, leader: s0.leader, stiff: s0.stiff, cal: s0.cal }, z(s0.lineAng))
+      : Object.assign({ U: st.U, mode: st.mode, leader: st.leader, stiff: st.stiff, cal: Object.assign({}, st.cal) }, z(st.lineAng ?? 15));
   }
   function useBundle(i, key, b) {
     const m = models[i];
@@ -651,12 +671,17 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
     }
   }
 
+  function flowTag() {
+    const s0 = models[0].sim;
+    $("flowtag").textContent = "← 流れ  " + s0.U.toFixed(2) + " m/s" + (s0.zfree && s0.sink > 0.02 ? "  ↓ 沈下 " + s0.sink.toFixed(2) + " m/s" : "");
+  }
   function syncControls() {
     const s0 = models[0].sim;
     $("U").value = s0.U; $("speed").value = SPEEDS.indexOf(speed);
     $("leader").value = Math.round(s0.leader * 100); $("stiff").value = Math.round(s0.stiff * 100);
+    $("lineAng").value = s0.lineAng; $("lineAngo").textContent = s0.lineAng >= 90 ? "固定" : s0.lineAng + "°";
     $("Uo").textContent = s0.U.toFixed(2) + " m/s";
-    $("flowtag").textContent = "← 流れ  " + s0.U.toFixed(2) + " m/s";
+    flowTag();
     $("speedo").textContent = speed === 1 ? "実時間" : "1/" + Math.round(1 / speed) + " スロー";
     $("leadero").textContent = Math.round(s0.leader * 100) + " cm";
     $("stiffo").textContent = Math.round(s0.stiff * 100) + " %";
@@ -677,6 +702,7 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
   $("speed").addEventListener("input", e => { st.speedIdx = +e.target.value; speed = SPEEDS[st.speedIdx]; syncControls(); save(); });
   $("leader").addEventListener("input", e => { allSims(s => { s.leader = +e.target.value / 100; s.anchor = [s.leader, 0, 0]; }); syncControls(); save(); });
   $("stiff").addEventListener("input", e => { allSims(s => s.stiff = +e.target.value / 100); syncControls(); save(); });
+  $("lineAng").addEventListener("input", e => { const a = +e.target.value; allSims(s => { s.lineAng = a; s.zfree = a < 90; }); syncControls(); save(); });
   function setMode(md) { allSims(s => s.mode = md); resetAllSims(); syncControls(); save(); }
   $("m-pin").addEventListener("click", () => setMode("pin"));
   $("m-leader").addEventListener("click", () => setMode("leader"));
@@ -789,6 +815,7 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
     return { yA, rA, broken: rA > 70 || Math.abs(mean(col(3))) > 70 };
   }
   function stats() {
+    flowTag();
     const a = statsFor(0);
     if (st.layout === "cmp" && models[1].sim) statsFor(1);
     if (!a) return;
@@ -825,8 +852,10 @@ if (typeof module !== "undefined") module.exports = { makeLure, createSim, step,
     if (st.layout === "cmp" && models[1].sim) stepModel(models[1], n);
     const U = models[0].sim.U, dx = U * 1000 * wall * speed;
     const tail = Math.max(2, U * 1000 * 0.02);   // 軌跡の長さ（水が 0.02 秒で進む距離。1 m/s で 2 cm）
+    const dz = (models[0].sim.zfree ? models[0].sim.sink : 0) * 1000 * wall * speed;   // 沈むルアーから見ると水は下から上へ
     for (let i = 0; i < NP; i++) {
       ppos[i * 3] -= dx; if (ppos[i * 3] < -150) ppos[i * 3] += 300;
+      ppos[i * 3 + 2] += dz; if (ppos[i * 3 + 2] > 45) ppos[i * 3 + 2] -= 100;
       const x = ppos[i * 3], y = ppos[i * 3 + 1], z = ppos[i * 3 + 2];
       spos[i * 6] = x; spos[i * 6 + 1] = y; spos[i * 6 + 2] = z;
       spos[i * 6 + 3] = x + tail; spos[i * 6 + 4] = y; spos[i * 6 + 5] = z;

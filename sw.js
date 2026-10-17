@@ -1,5 +1,5 @@
 // ルアーアクション・シミュレータ Service Worker
-const VERSION = "v20261017-1636";
+const VERSION = "v20261017-1703";
 const CACHE = "flume-" + VERSION;
 const CORE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png",
   "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"];
